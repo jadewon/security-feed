@@ -1,0 +1,20 @@
+# 환경변수
+.env
+
+# 설정 (실제 whitelist 포함)
+config.yaml
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 데이터
+data/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store

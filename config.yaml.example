@@ -1,0 +1,94 @@
+# Security Feed Automation 설정
+
+# 피드 소스
+feeds:
+  nvd:
+    url: "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml"
+    enabled: true
+  thehackernews:
+    url: "https://feeds.feedburner.com/TheHackersNews"
+    enabled: true
+  github:
+    enabled: true
+
+# LLM 설정
+llm:
+  model: "gemma-3-12b-it"
+
+# Slack 설정 (환경변수로 관리)
+# SLACK_WEBHOOK_URL: Slack Incoming Webhook URL
+# SLACK_MENTION_USERS: 멘션할 사용자 (콤마 구분, 예: "user1,user2")
+slack:
+  mention_users: []  # 환경변수 SLACK_MENTION_USERS로 설정
+
+# 필터링 설정
+filtering:
+  min_score_for_llm: 3
+
+# 중복 제거 설정
+deduplication:
+  storage_file: "data/processed.json"
+  retention_days: 90
+
+# ============================================
+# 화이트리스트 (모니터링할 기술 스택)
+# - 여기에 있는 제품만 알림 대상
+# - README.md 참고하여 자신의 환경에 맞게 수정
+# ============================================
+whitelist:
+  # 프레임워크 (예시)
+  backend:
+    - nestjs
+    - spring boot
+    - express
+    - fastapi
+    - django
+
+  # 데이터베이스/캐시 (예시)
+  database:
+    - mysql
+    - postgresql
+    - redis
+    - elasticsearch
+    - mongodb
+
+  # 인프라 (예시)
+  infra:
+    - kubernetes
+    - docker
+    - nginx
+    - aws eks
+
+  # 모니터링 (예시)
+  monitoring:
+    - prometheus
+    - grafana
+
+# 보안 키워드 (점수 계산용)
+security_keywords:
+  critical:
+    - remote code execution
+    - rce
+    - zero-day
+    - 0-day
+    - critical vulnerability
+    - authentication bypass
+    - privilege escalation
+
+  high:
+    - vulnerability
+    - exploit
+    - sql injection
+    - xss
+    - cross-site scripting
+    - command injection
+    - path traversal
+    - ssrf
+    - csrf
+
+  urgent:
+    - urgent
+    - patch now
+    - immediately
+    - actively exploited
+    - in the wild
