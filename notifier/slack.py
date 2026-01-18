@@ -2,6 +2,7 @@
 Slack 알림 발송
 """
 
+import logging
 import os
 from typing import List, Optional
 
@@ -10,6 +11,8 @@ import requests
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 2)[0])
 from models import FeedItem, AnalysisResult
+
+logger = logging.getLogger(__name__)
 
 
 class SlackNotifier:
@@ -29,7 +32,7 @@ class SlackNotifier:
     ):
         self.webhook_url = webhook_url or os.environ.get("SLACK_WEBHOOK_URL")
         if not self.webhook_url:
-            print("[WARN] SLACK_WEBHOOK_URL이 설정되지 않음")
+            logger.warning("SLACK_WEBHOOK_URL이 설정되지 않음")
 
         self.mention_users = mention_users or []
 
@@ -41,7 +44,7 @@ class SlackNotifier:
     ) -> bool:
         """즉시 알림 발송 (Critical/High)"""
         if not self.webhook_url:
-            print("[WARN] Webhook URL 없음, 알림 스킵")
+            logger.warning("Webhook URL 없음, 알림 스킵")
             return False
 
         emoji = self.SEVERITY_EMOJI.get(analysis.severity, ":question:")
@@ -99,7 +102,7 @@ class SlackNotifier:
             })
 
         if dry_run:
-            print(f"[DRY-RUN] 알림 발송: {item.title[:50]}...")
+            logger.info(f"[DRY-RUN] 알림 발송: {item.title[:50]}...")
             return True
 
         return self._send(message)
@@ -111,7 +114,7 @@ class SlackNotifier:
     ) -> bool:
         """여러 알림을 한 번에 모아서 발송"""
         if not self.webhook_url:
-            print("[WARN] Webhook URL 없음, 알림 스킵")
+            logger.warning("Webhook URL 없음, 알림 스킵")
             return False
 
         if not items:
@@ -186,7 +189,7 @@ class SlackNotifier:
         message = {"blocks": blocks}
 
         if dry_run:
-            print(f"[DRY-RUN] 일괄 알림 발송: {len(sorted_items)}건")
+            logger.info(f"[DRY-RUN] 일괄 알림 발송: {len(sorted_items)}건")
             return True
 
         return self._send(message)
@@ -199,11 +202,11 @@ class SlackNotifier:
     ) -> bool:
         """일일 요약 발송"""
         if not self.webhook_url:
-            print("[WARN] Webhook URL 없음, 알림 스킵")
+            logger.warning("Webhook URL 없음, 알림 스킵")
             return False
 
         if not items:
-            print("[INFO] 요약할 항목 없음")
+            logger.info("요약할 항목 없음")
             return True
 
         # 심각도별 그룹화
@@ -258,7 +261,7 @@ class SlackNotifier:
         message = {"blocks": blocks}
 
         if dry_run:
-            print(f"[DRY-RUN] 일일 요약 발송: {total}건")
+            logger.info(f"[DRY-RUN] 일일 요약 발송: {total}건")
             return True
 
         return self._send(message)
@@ -266,19 +269,23 @@ class SlackNotifier:
     def _send(self, message: dict) -> bool:
         """Slack webhook으로 메시지 발송"""
         try:
+            logger.info(f"Slack API 호출 시작: {self.webhook_url[:50]}...")
+            
             response = requests.post(
                 self.webhook_url,
                 json=message,
                 timeout=10,
             )
 
-            if response.status_code == 200:
-                print("[INFO] Slack 알림 발송 성공")
+            logger.info(f"Slack API 응답: status={response.status_code}, body={response.text[:200]}")
+
+            if response.status_code == 200 and response.text == "ok":
+                logger.info("Slack 알림 발송 성공")
                 return True
             else:
-                print(f"[ERROR] Slack 알림 실패: {response.status_code} - {response.text}")
+                logger.error(f"Slack 알림 실패: status={response.status_code}, body={response.text}")
                 return False
 
         except Exception as e:
-            print(f"[ERROR] Slack 알림 발송 오류: {e}")
+            logger.error(f"Slack 알림 발송 오류: {e}")
             return False

@@ -5,12 +5,21 @@ Security Feed Automation
 """
 
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+# 로깅 설정
+logging.basicConfig(
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # 모듈 경로 설정
 sys.path.insert(0, str(Path(__file__).parent))
@@ -71,18 +80,18 @@ def run_pipeline(
     }
 
     # 1. 피드 수집
-    print("=" * 50)
-    print("[1/5] 피드 수집 중...")
+    logger.info("=" * 50)
+    logger.info("[1/5] 피드 수집 중...")
     items = collect_feeds(config)
     stats["collected"] = len(items)
-    print(f"      수집 완료: {len(items)}개")
+    logger.info(f"      수집 완료: {len(items)}개")
 
     if not items:
-        print("[INFO] 수집된 항목 없음")
+        logger.info("수집된 항목 없음")
         return stats
 
     # 2. 중복 제거
-    print("[2/5] 중복 제거 중...")
+    logger.info("[2/5] 중복 제거 중...")
     dedup_config = config.get("deduplication", {})
     storage_path = Path(__file__).parent / dedup_config.get("storage_file", "data/processed.json")
     dedup = DeduplicationStore(str(storage_path), dedup_config.get("retention_days", 90))
@@ -92,14 +101,14 @@ def run_pipeline(
 
     new_items = dedup.filter_new_items(items)
     stats["new_items"] = len(new_items)
-    print(f"      신규 항목: {len(new_items)}개 (기존 {len(items) - len(new_items)}개 스킵)")
+    logger.info(f"      신규 항목: {len(new_items)}개 (기존 {len(items) - len(new_items)}개 스킵)")
 
     if not new_items:
-        print("[INFO] 신규 항목 없음")
+        logger.info("신규 항목 없음")
         return stats
 
     # 3. 필터링
-    print("[3/5] 필터링 중...")
+    logger.info("[3/5] 필터링 중...")
     # whitelist를 1차 필터링 키워드로도 사용
     whitelist = config.get("whitelist", {})
     security_keywords = config.get("security_keywords", {})
@@ -109,21 +118,21 @@ def run_pipeline(
     llm_candidates, filtered_out = pipeline.filter_for_llm(new_items)
     stats["passed_filter"] = len(llm_candidates)
 
-    print(f"      LLM 분석 대상: {len(llm_candidates)}개")
-    print(f"      필터링 제외: {len(filtered_out)}개")
+    logger.info(f"      LLM 분석 대상: {len(llm_candidates)}개")
+    logger.info(f"      필터링 제외: {len(filtered_out)}개")
 
     if verbose:
         for result in llm_candidates:
-            print(f"        - [{result.score}점] {result.item.title[:50]}...")
+            logger.info(f"        - [{result.score}점] {result.item.title[:50]}...")
 
     if not llm_candidates:
         # 신규 항목은 처리됨으로 표시
         dedup.mark_all_processed(new_items)
-        print("[INFO] LLM 분석 대상 없음")
+        logger.info("LLM 분석 대상 없음")
         return stats
 
     # 4. LLM 분석
-    print("[4/5] LLM 분석 중...")
+    logger.info("[4/5] LLM 분석 중...")
     llm_config = config.get("llm", {})
     whitelist = config.get("whitelist", {})
 
@@ -140,20 +149,18 @@ def run_pipeline(
                 analyzed.append((result.item, analysis))
                 stats["llm_analyzed"] += 1
 
-        print(f"      관련 항목: {len(analyzed)}개")
+        logger.info(f"      관련 항목: {len(analyzed)}개")
 
     except Exception as e:
-        print(f"[ERROR] LLM 분석 실패: {e}")
+        logger.error(f"LLM 분석 실패: {e}")
         dedup.mark_all_processed(new_items)
         return stats
 
     # 5. 알림 발송
-    print("[5/5] 알림 발송 중...")
-    # 환경변수에서 멘션 사용자 로드 (콤마 구분)
-    mention_users_env = os.environ.get("SLACK_MENTION_USERS", "")
-    mention_users = [u.strip() for u in mention_users_env.split(",") if u.strip()]
+    logger.info("[5/5] 알림 발송 중...")
+    slack_config = config.get("slack", {})
     notifier = SlackNotifier(
-        mention_users=mention_users,
+        mention_users=slack_config.get("mention_users", []),
     )
 
     # critical/high 항목만 필터링
@@ -164,31 +171,31 @@ def run_pipeline(
         if notifier.send_batch_alerts(alert_items, dry_run=dry_run):
             stats["alerts_sent"] = len(alert_items)
 
-    print(f"      알림 발송: {stats['alerts_sent']}건")
+    logger.info(f"      알림 발송: {stats['alerts_sent']}건")
 
     # 처리 완료 표시
     dedup.mark_all_processed(new_items)
 
-    print("=" * 50)
-    print("[완료] 파이프라인 실행 완료")
-    print(f"       수집: {stats['collected']} → 신규: {stats['new_items']} → 필터: {stats['passed_filter']} → LLM: {stats['llm_analyzed']} → 알림: {stats['alerts_sent']}")
+    logger.info("=" * 50)
+    logger.info("[완료] 파이프라인 실행 완료")
+    logger.info(f"       수집: {stats['collected']} → 신규: {stats['new_items']} → 필터: {stats['passed_filter']} → LLM: {stats['llm_analyzed']} → 알림: {stats['alerts_sent']}")
 
     return stats
 
 
 def run_cleanup(config: dict) -> None:
     """오래된 데이터 정리"""
-    print("[정리] 오래된 항목 삭제 중...")
+    logger.info("[정리] 오래된 항목 삭제 중...")
     dedup_config = config.get("deduplication", {})
     storage_path = Path(__file__).parent / dedup_config.get("storage_file", "data/processed.json")
     dedup = DeduplicationStore(str(storage_path), dedup_config.get("retention_days", 90))
     deleted = dedup.cleanup_old_entries()
-    print(f"[정리] {deleted}개 항목 삭제됨")
+    logger.info(f"[정리] {deleted}개 항목 삭제됨")
 
 
 def run_daily_summary(config: dict, dry_run: bool = False) -> None:
     """일일 요약 발송 (구현 예정)"""
-    print("[INFO] 일일 요약 기능은 아직 구현되지 않았습니다")
+    logger.info("일일 요약 기능은 아직 구현되지 않았습니다")
     # TODO: 오늘 처리된 항목들을 모아서 요약 발송
 
 
