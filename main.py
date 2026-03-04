@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent))
 
 from models import FeedItem, AnalysisResult
-from collectors import NVDCollector, THNCollector, GitHubCollector
+from collectors import NVDCollector, THNCollector, GitHubCollector, KISACollector
 from filters import FilterPipeline
 from llm import GemmaAnalyzer
 from storage import DeduplicationStore
@@ -60,6 +60,17 @@ def collect_feeds(config: dict) -> list[FeedItem]:
     # GitHub Advisory
     if feed_config.get("github", {}).get("enabled", True):
         collector = GitHubCollector()
+        items.extend(collector.fetch())
+
+    # KISA 보호나라
+    if feed_config.get("kisa", {}).get("enabled", True):
+        kisa_config = feed_config.get("kisa", {})
+        feed_urls = {}
+        if kisa_config.get("advisory_url"):
+            feed_urls["advisory"] = kisa_config["advisory_url"]
+        if kisa_config.get("vulnerability_url"):
+            feed_urls["vulnerability"] = kisa_config["vulnerability_url"]
+        collector = KISACollector(feed_urls if feed_urls else None)
         items.extend(collector.fetch())
 
     return items
